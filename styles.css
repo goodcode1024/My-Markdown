@@ -1164,11 +1164,12 @@ body.dark .editor-pane {
 body.dark .note-title,
 body.dark #editor {
     color: #e5e5e5;
+    background-color: #1a1a1a;
 }
 
 body.dark .note-title::placeholder,
 body.dark #editor::placeholder {
-    color: #6b7280;
+    color: #9ca3af;
 }
 
 body.dark .preview-pane {
@@ -1178,13 +1179,20 @@ body.dark .preview-pane {
 body.dark .markdown-preview h1,
 body.dark .markdown-preview h2,
 body.dark .markdown-preview h3,
-body.dark .markdown-preview p {
+body.dark .markdown-preview h4,
+body.dark .markdown-preview h5,
+body.dark .markdown-preview h6,
+body.dark .markdown-preview p,
+body.dark .markdown-preview li,
+body.dark .markdown-preview td,
+body.dark .markdown-preview th {
     color: #e5e5e5;
 }
 
 body.dark .markdown-preview code {
     background-color: #374151;
     color: #fbbf24;
+    border: 1px solid #4b5563;
 }
 
 body.dark .markdown-preview pre {
@@ -1192,13 +1200,181 @@ body.dark .markdown-preview pre {
     border-color: #4b5563;
 }
 
+body.dark .markdown-preview blockquote {
+    border-left-color: #6b7280;
+    background-color: #2d2d2d;
+    color: #d1d5db;
+}
+
+body.dark .markdown-preview table {
+    border-color: #4b5563;
+}
+
+body.dark .markdown-preview th,
+body.dark .markdown-preview td {
+    border-color: #4b5563;
+}
+
+body.dark .markdown-preview th {
+    background-color: #374151;
+}
+
 body.dark .modal-content {
     background-color: #2d2d2d;
     color: #e5e5e5;
+    border: 1px solid #404040;
 }
 
 body.dark .modal-header {
     border-bottom-color: #404040;
+}
+
+/* Dark theme for buttons */
+body.dark .btn-secondary {
+    background-color: #374151;
+    color: #e5e5e5;
+    border-color: #4b5563;
+}
+
+body.dark .btn-secondary:hover {
+    background-color: #4b5563;
+    border-color: #6b7280;
+}
+
+body.dark .toolbar button {
+    color: #e5e5e5;
+    background-color: transparent;
+}
+
+body.dark .toolbar button:hover {
+    background-color: #374151;
+}
+
+body.dark .markdown-toolbar button {
+    color: #e5e5e5;
+    background-color: transparent;
+    border-color: #4b5563;
+}
+
+body.dark .markdown-toolbar button:hover {
+    background-color: #374151;
+}
+
+body.dark .markdown-toolbar button.active {
+    background-color: #2563eb;
+    color: white;
+}
+
+/* Dark theme for form elements */
+body.dark select,
+body.dark input[type="text"],
+body.dark input[type="password"],
+body.dark input[type="range"],
+body.dark textarea {
+    background-color: #374151;
+    color: #e5e5e5;
+    border-color: #4b5563;
+}
+
+body.dark select:focus,
+body.dark input[type="text"]:focus,
+body.dark input[type="password"]:focus,
+body.dark textarea:focus {
+    border-color: #2563eb;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+body.dark .workspace-selector select,
+body.dark .workspace-selector button {
+    background-color: #374151;
+    color: #e5e5e5;
+    border-color: #4b5563;
+}
+
+body.dark .workspace-selector button:hover {
+    background-color: #4b5563;
+}
+
+/* Dark theme for modal labels and text */
+body.dark .modal label,
+body.dark .setting-group label {
+    color: #e5e5e5;
+}
+
+body.dark .modal h3,
+body.dark .setting-group h3 {
+    color: #e5e5e5;
+}
+
+body.dark .modal small,
+body.dark .setting-group small {
+    color: #9ca3af !important;
+}
+
+/* Dark theme for note items */
+body.dark .note-item {
+    color: #e5e5e5;
+}
+
+body.dark .note-item:hover {
+    background-color: #374151;
+}
+
+body.dark .note-item.active {
+    background-color: #2563eb;
+    color: white;
+}
+
+body.dark .note-item-title {
+    color: #e5e5e5;
+}
+
+body.dark .note-item-preview {
+    color: #9ca3af;
+}
+
+body.dark .note-item-date {
+    color: #6b7280;
+}
+
+/* Dark theme for AI dialog */
+body.dark .ai-dialog-content {
+    background-color: #2d2d2d;
+    border-color: #404040;
+    color: #e5e5e5;
+}
+
+body.dark .ai-dialog-header {
+    border-bottom-color: #404040;
+}
+
+body.dark .ai-dialog-body {
+    color: #e5e5e5;
+}
+
+body.dark .ai-dialog-input {
+    background-color: #374151;
+    color: #e5e5e5;
+    border-color: #4b5563;
+}
+
+body.dark .ai-dialog-input:focus {
+    border-color: #2563eb;
+}
+
+body.dark .ai-send {
+    background-color: #2563eb;
+    color: white;
+}
+
+body.dark .ai-send:hover {
+    background-color: #1d4ed8;
+}
+
+body.dark .ai-send:disabled {
+    background-color: #4b5563;
+    color: #9ca3af;
 }
 
 /* Scrollbar Styles */
