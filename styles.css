@@ -131,6 +131,45 @@ body {
     gap: 8px;
 }
 
+.sync-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: #f3f4f6;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.sync-indicator.connected {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.sync-indicator.syncing {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.sync-indicator.error {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.sync-indicator i {
+    font-size: 14px;
+}
+
+.sync-indicator.syncing i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .btn-primary {
     background-color: #2eaadc;
     color: white;
