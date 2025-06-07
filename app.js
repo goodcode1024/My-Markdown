@@ -261,7 +261,27 @@ class NotesApp {
     
     // Markdown Processing
     setupMarkdownRenderer() {
+        // Create custom renderer for links
+        const renderer = new marked.Renderer();
+        
+        // Override link rendering to open in new tab
+        renderer.link = function(href, title, text) {
+            const titleAttr = title ? ` title="${title}"` : '';
+            
+            // Ensure external links have proper protocol
+            let finalHref = href;
+            if (href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                // If it looks like a domain (contains a dot), add https://
+                if (href.includes('.') && !href.startsWith('/')) {
+                    finalHref = 'https://' + href;
+                }
+            }
+            
+            return `<a href="${finalHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+        };
+        
         marked.setOptions({
+            renderer: renderer,
             highlight: function(code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
                     return hljs.highlight(code, { language: lang }).value;
