@@ -12,7 +12,9 @@ class NotesApp {
             aiEnabled: false,
             aiApiKey: '',
             aiBaseUrl: 'https://api.deepseek.com',
-            aiModel: 'deepseek-chat'
+            aiModel: 'deepseek-chat',
+            markdownTheme: 'github',
+            customThemeUrl: ''
         };
         const savedSettings = JSON.parse(localStorage.getItem('settings')) || {};
         this.settings = Object.assign({}, defaultSettings, savedSettings);
@@ -98,6 +100,10 @@ class NotesApp {
         document.getElementById('aiApiKey').addEventListener('input', (e) => this.updateAISetting('aiApiKey', e.target.value));
         document.getElementById('aiBaseUrl').addEventListener('input', (e) => this.updateAISetting('aiBaseUrl', e.target.value));
         document.getElementById('aiModel').addEventListener('input', (e) => this.updateAISetting('aiModel', e.target.value));
+        
+        // Markdown theme events
+        document.getElementById('markdownThemeSelect').addEventListener('change', (e) => this.changeMarkdownTheme(e.target.value));
+        document.getElementById('customThemeUrl').addEventListener('input', (e) => this.updateCustomThemeUrl(e.target.value));
         
         // Mobile sidebar toggle
         document.getElementById('sidebarToggle').addEventListener('click', () => this.toggleSidebar());
@@ -819,6 +825,13 @@ class NotesApp {
         document.getElementById('aiApiKey').value = this.settings.aiApiKey;
         document.getElementById('aiBaseUrl').value = this.settings.aiBaseUrl;
         document.getElementById('aiModel').value = this.settings.aiModel;
+        document.getElementById('markdownThemeSelect').value = this.settings.markdownTheme;
+        document.getElementById('customThemeUrl').value = this.settings.customThemeUrl;
+        
+        // Show/hide custom theme input based on selection
+        const customThemeGroup = document.getElementById('customThemeGroup');
+        customThemeGroup.style.display = this.settings.markdownTheme === 'custom' ? 'block' : 'none';
+        
         modal.classList.add('show');
     }
     
@@ -854,6 +867,67 @@ class NotesApp {
         document.body.className = this.settings.theme;
         document.getElementById('editor').style.fontSize = this.settings.fontSize + 'px';
         document.getElementById('preview').style.fontSize = this.settings.fontSize + 'px';
+        this.applyMarkdownTheme();
+    }
+    
+    changeMarkdownTheme(theme) {
+        this.settings.markdownTheme = theme;
+        this.saveSettings();
+        this.applyMarkdownTheme();
+        
+        // Show/hide custom theme input
+        const customThemeGroup = document.getElementById('customThemeGroup');
+        customThemeGroup.style.display = theme === 'custom' ? 'block' : 'none';
+    }
+    
+    updateCustomThemeUrl(url) {
+        this.settings.customThemeUrl = url;
+        this.saveSettings();
+        if (this.settings.markdownTheme === 'custom') {
+            this.applyMarkdownTheme();
+        }
+    }
+    
+    applyMarkdownTheme() {
+        // Remove existing highlight.js theme
+        const existingTheme = document.querySelector('link[data-highlight-theme]');
+        if (existingTheme) {
+            existingTheme.remove();
+        }
+        
+        let themeUrl;
+        if (this.settings.markdownTheme === 'custom' && this.settings.customThemeUrl) {
+            themeUrl = this.settings.customThemeUrl;
+        } else {
+            const themeMap = {
+                'github': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css',
+                'github-dark': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css',
+                'monokai': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css',
+                'atom-one-dark': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css',
+                'vs': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs.min.css',
+                'vs2015': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css',
+                'rainbow': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/rainbow.min.css',
+                'stackoverflow-light': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/stackoverflow-light.min.css',
+                'stackoverflow-dark': 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/stackoverflow-dark.min.css'
+            };
+            themeUrl = themeMap[this.settings.markdownTheme] || themeMap['github'];
+        }
+        
+        // Add new theme
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = themeUrl;
+        link.setAttribute('data-highlight-theme', 'true');
+        document.head.appendChild(link);
+        
+        // Re-highlight all code blocks after theme change
+        setTimeout(() => {
+            if (window.hljs) {
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+        }, 100);
     }
     
     // Workspace Management
@@ -2022,7 +2096,7 @@ class NotesApp {
         if (!hasTutorial) {
             const tutorialNote = {
                 id: 'tutorial-' + Date.now().toString(),
-                title: '📚 My Markdown功能教程',
+                title: '📚 智能笔记应用功能教程',
                 content: this.getTutorialContent(),
                 workspace: 'public',
                 createdAt: new Date().toISOString(),
