@@ -59,6 +59,7 @@ class NotesApp {
         document.getElementById('exportPDF').addEventListener('click', () => this.exportToPDF());
         document.getElementById('exportHTML').addEventListener('click', () => this.exportToHTML());
         document.getElementById('exportImage').addEventListener('click', () => this.exportToImage());
+        document.getElementById('exportMarkdown').addEventListener('click', () => this.exportToMarkdown());
         document.getElementById('togglePreview').addEventListener('click', () => this.togglePreview());
         document.getElementById('fullscreen').addEventListener('click', () => this.toggleFullscreen());
         
@@ -756,6 +757,32 @@ class NotesApp {
             console.error('图片导出失败:', error);
             alert('图片导出失败，请重试');
         });
+    }
+    
+    exportToMarkdown() {
+        if (!this.currentNote) return;
+        
+        // 创建完整的Markdown内容，包含标题和正文
+        const markdownContent = `# ${this.currentNote.title}\n\n${this.currentNote.content}`;
+        
+        // 创建Blob对象
+        const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        // 创建下载链接
+        const a = document.createElement('a');
+        a.href = url;
+        // 使用安全的文件名，避免特殊字符导致的问题
+        const safeTitle = this.currentNote.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        a.download = `${safeTitle}.md`;
+        
+        // 触发下载
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // 清理URL对象
+        URL.revokeObjectURL(url);
     }
     
     // UI Controls
