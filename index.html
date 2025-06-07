@@ -183,11 +183,31 @@
             </div>
             <div class="modal-body">
                 <div class="setting-group">
-                    <label>主题</label>
+                    <label>应用主题</label>
                     <select id="themeSelect">
                         <option value="light">浅色</option>
                         <option value="dark">深色</option>
                     </select>
+                </div>
+                <div class="setting-group">
+                    <label>Markdown 主题</label>
+                    <select id="markdownThemeSelect">
+                        <option value="github">GitHub</option>
+                        <option value="github-dark">GitHub Dark</option>
+                        <option value="monokai">Monokai</option>
+                        <option value="atom-one-dark">Atom One Dark</option>
+                        <option value="vs">Visual Studio</option>
+                        <option value="vs2015">Visual Studio 2015</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="stackoverflow-light">Stack Overflow Light</option>
+                        <option value="stackoverflow-dark">Stack Overflow Dark</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="setting-group" id="customThemeGroup" style="display: none;">
+                    <label>自定义主题链接</label>
+                    <input type="text" id="customThemeUrl" placeholder="请输入 CSS 文件链接，如：https://example.com/theme.css">
+                    <small style="color: #6b7280; font-size: 12px; margin-top: 4px; display: block;">输入完整的 CSS 文件 URL，将替换当前的代码高亮主题</small>
                 </div>
                 <div class="setting-group">
                     <label>字体大小</label>
