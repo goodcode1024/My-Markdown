@@ -5,11 +5,17 @@ class NotesApp {
         this.currentNote = null;
         this.currentWorkspace = localStorage.getItem('currentWorkspace') || 'public';
         this.workspaces = JSON.parse(localStorage.getItem('workspaces')) || ['public', 'private'];
-        this.settings = JSON.parse(localStorage.getItem('settings')) || {
+        const defaultSettings = {
             theme: 'light',
             fontSize: 14,
-            autoSave: true
+            autoSave: true,
+            aiEnabled: false,
+            aiApiKey: '',
+            aiBaseUrl: 'https://api.deepseek.com',
+            aiModel: 'deepseek-chat'
         };
+        const savedSettings = JSON.parse(localStorage.getItem('settings')) || {};
+        this.settings = Object.assign({}, defaultSettings, savedSettings);
         this.autoSaveTimer = null;
         this.isPreviewMode = false;
         
@@ -19,6 +25,7 @@ class NotesApp {
     init() {
         this.setupEventListeners();
         this.loadWorkspace();
+        this.createDefaultTutorial();
         this.renderNotesList();
         this.applySettings();
         this.setupMarkdownRenderer();
@@ -27,7 +34,7 @@ class NotesApp {
         
         // Setup image toggle handlers for editor
         document.getElementById('editor').addEventListener('input', () => {
-    
+            // Image toggle handlers will be added here if needed
         });
         
         // Load first note if exists
@@ -55,7 +62,12 @@ class NotesApp {
         
         // Editor events
         document.getElementById('noteTitle').addEventListener('input', () => this.onContentChange());
-        document.getElementById('editor').addEventListener('input', () => this.onContentChange());
+        document.getElementById('editor').addEventListener('input', (e) => {
+            this.onContentChange();
+        });
+        document.getElementById('editor').addEventListener('keydown', (e) => {
+            this.handleAITrigger(e);
+        });
         document.getElementById('editor').addEventListener('scroll', () => this.syncScroll());
         document.getElementById('editor').addEventListener('click', (e) => this.handleEditorClick(e));
         
@@ -82,6 +94,10 @@ class NotesApp {
         document.getElementById('themeSelect').addEventListener('change', (e) => this.changeTheme(e.target.value));
         document.getElementById('fontSizeSlider').addEventListener('input', (e) => this.changeFontSize(e.target.value));
         document.getElementById('autoSave').addEventListener('change', (e) => this.toggleAutoSave(e.target.checked));
+        document.getElementById('aiEnabled').addEventListener('change', (e) => this.toggleAI(e.target.checked));
+        document.getElementById('aiApiKey').addEventListener('input', (e) => this.updateAISetting('aiApiKey', e.target.value));
+        document.getElementById('aiBaseUrl').addEventListener('input', (e) => this.updateAISetting('aiBaseUrl', e.target.value));
+        document.getElementById('aiModel').addEventListener('input', (e) => this.updateAISetting('aiModel', e.target.value));
         
         // Mobile sidebar toggle
         document.getElementById('sidebarToggle').addEventListener('click', () => this.toggleSidebar());
@@ -645,17 +661,41 @@ class NotesApp {
         
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF();
+        const preview = document.getElementById('preview');
         
-        // Add title
-        pdf.setFontSize(20);
-        pdf.text(this.currentNote.title, 20, 30);
-        
-        // Add content (simplified)
-        pdf.setFontSize(12);
-        const lines = pdf.splitTextToSize(this.currentNote.content, 170);
-        pdf.text(lines, 20, 50);
-        
-        pdf.save(`${this.currentNote.title}.pdf`);
+        // 使用 html2canvas 将预览内容转换为图片，然后插入 PDF
+        // 这样可以保持所有格式和中文字符
+        html2canvas(preview, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true
+        }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = 190; // PDF 页面宽度减去边距
+            const pageHeight = 297; // A4 页面高度
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 10;
+            
+            // 添加第一页
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight - 20; // 减去上下边距
+            
+            // 如果内容超过一页，添加更多页面
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+            
+            // 保存 PDF，使用安全的文件名
+            const safeTitle = this.currentNote.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+            pdf.save(`${safeTitle}.pdf`);
+        }).catch(error => {
+            console.error('PDF 导出失败:', error);
+            alert('PDF 导出失败，请重试');
+        });
     }
     
     exportToHTML() {
@@ -680,11 +720,13 @@ class NotesApp {
 </body>
 </html>`;
         
-        const blob = new Blob([html], { type: 'text/html' });
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${this.currentNote.title}.html`;
+        // 使用安全的文件名，避免特殊字符导致的问题
+        const safeTitle = this.currentNote.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        a.download = `${safeTitle}.html`;
         a.click();
         URL.revokeObjectURL(url);
     }
@@ -693,11 +735,20 @@ class NotesApp {
         if (!this.currentNote) return;
         
         const preview = document.getElementById('preview');
-        html2canvas(preview).then(canvas => {
+        html2canvas(preview, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true
+        }).then(canvas => {
             const link = document.createElement('a');
-            link.download = `${this.currentNote.title}.png`;
-            link.href = canvas.toDataURL();
+            // 使用安全的文件名，避免特殊字符导致的问题
+            const safeTitle = this.currentNote.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+            link.download = `${safeTitle}.png`;
+            link.href = canvas.toDataURL('image/png');
             link.click();
+        }).catch(error => {
+            console.error('图片导出失败:', error);
+            alert('图片导出失败，请重试');
         });
     }
     
@@ -764,6 +815,10 @@ class NotesApp {
         document.getElementById('fontSizeSlider').value = this.settings.fontSize;
         document.getElementById('fontSizeValue').textContent = this.settings.fontSize + 'px';
         document.getElementById('autoSave').checked = this.settings.autoSave;
+        document.getElementById('aiEnabled').checked = this.settings.aiEnabled;
+        document.getElementById('aiApiKey').value = this.settings.aiApiKey;
+        document.getElementById('aiBaseUrl').value = this.settings.aiBaseUrl;
+        document.getElementById('aiModel').value = this.settings.aiModel;
         modal.classList.add('show');
     }
     
@@ -782,6 +837,16 @@ class NotesApp {
     
     toggleAutoSave(enabled) {
         this.settings.autoSave = enabled;
+        this.saveSettings();
+    }
+    
+    toggleAI(enabled) {
+        this.settings.aiEnabled = enabled;
+        this.saveSettings();
+    }
+    
+    updateAISetting(key, value) {
+        this.settings[key] = value;
         this.saveSettings();
     }
     
@@ -1660,6 +1725,510 @@ class NotesApp {
     
     saveSettings() {
         localStorage.setItem('settings', JSON.stringify(this.settings));
+    }
+    
+    // AI Functions
+    handleAITrigger(e) {
+        if (!this.settings.aiEnabled) return;
+        
+        const editor = document.getElementById('editor');
+        const text = editor.value;
+        const cursorPos = editor.selectionStart;
+        
+        // Check for @chat or @writer triggers when Tab is pressed
+        if (e.key === 'Tab') {
+            const beforeCursor = text.substring(0, cursorPos);
+            const lines = beforeCursor.split('\n');
+            const currentLine = lines[lines.length - 1];
+            
+            if (currentLine.trim() === '@chat') {
+                e.preventDefault(); // Prevent default tab behavior
+                // Remove the @chat text
+                const newText = text.substring(0, cursorPos - 5) + text.substring(cursorPos);
+                editor.value = newText;
+                const newCursorPos = cursorPos - 5;
+                editor.setSelectionRange(newCursorPos, newCursorPos);
+                this.onContentChange(); // Sync with preview
+                this.showAIChatDialog(newCursorPos);
+            } else if (currentLine.trim() === '@writer') {
+                e.preventDefault(); // Prevent default tab behavior
+                // Remove the @writer text
+                const newText = text.substring(0, cursorPos - 7) + text.substring(cursorPos);
+                editor.value = newText;
+                const newCursorPos = cursorPos - 7;
+                editor.setSelectionRange(newCursorPos, newCursorPos);
+                this.onContentChange(); // Sync with preview
+                this.showAIWriterDialog(newCursorPos);
+            }
+        }
+    }
+    
+    showAIChatDialog(cursorPos) {
+        const dialog = this.createAIDialog('chat', cursorPos);
+        document.body.appendChild(dialog);
+    }
+    
+    showAIWriterDialog(cursorPos) {
+        const dialog = this.createAIDialog('writer', cursorPos);
+        document.body.appendChild(dialog);
+    }
+    
+    createAIDialog(type, cursorPos) {
+        const dialog = document.createElement('div');
+        dialog.className = 'ai-dialog';
+        dialog.innerHTML = `
+            <div class="ai-dialog-content">
+                <div class="ai-dialog-header">
+                    <h3>${type === 'chat' ? 'AI 聊天助手' : 'AI 续写助手'}</h3>
+                    <button class="ai-dialog-close">&times;</button>
+                </div>
+                <div class="ai-dialog-body">
+                    ${type === 'chat' ? 
+                        '<textarea class="ai-input" placeholder="请输入您的问题..."></textarea>' :
+                        '<div class="ai-writer-info">AI 将根据当前文档内容进行续写</div>'
+                    }
+                    <div class="ai-response"></div>
+                </div>
+                <div class="ai-dialog-footer">
+                    <button class="ai-send">${type === 'chat' ? '发送' : '开始续写'}</button>
+                    <button class="ai-cancel">取消</button>
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners
+        dialog.querySelector('.ai-dialog-close').addEventListener('click', () => {
+            dialog.remove();
+        });
+        
+        dialog.querySelector('.ai-cancel').addEventListener('click', () => {
+            dialog.remove();
+        });
+        
+        // Close dialog when clicking on background
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.remove();
+            }
+        });
+        
+        dialog.querySelector('.ai-send').addEventListener('click', () => {
+            if (type === 'chat') {
+                this.handleAIChat(dialog, cursorPos);
+            } else {
+                this.handleAIWriter(dialog, cursorPos);
+            }
+        });
+        
+        return dialog;
+    }
+    
+    async handleAIChat(dialog, cursorPos) {
+        const input = dialog.querySelector('.ai-input');
+        const response = dialog.querySelector('.ai-response');
+        const question = input.value.trim();
+        
+        if (!question) return;
+        
+        const editor = document.getElementById('editor');
+        const content = editor.value;
+        
+        try {
+            response.innerHTML = '<div class="ai-loading">AI 正在思考中...</div>';
+            
+            let fullResponse = '';
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'ai-result';
+            resultDiv.innerHTML = `
+                <div class="ai-result-text"><span class="ai-typing-cursor">🧱</span></div>
+                <div class="ai-result-actions" style="display: none;">
+                    <button class="ai-insert">插入到文档</button>
+                </div>
+            `;
+            response.innerHTML = '';
+            response.appendChild(resultDiv);
+            
+            const textDiv = resultDiv.querySelector('.ai-result-text');
+            const actionsDiv = resultDiv.querySelector('.ai-result-actions');
+            
+            await this.callAI({
+                role: 'chat',
+                content: content,
+                question: question
+            }, (chunk, fullContent) => {
+                fullResponse = fullContent;
+                this.typewriterEffect(textDiv, fullContent);
+            });
+            
+            // 移除光标并显示操作按钮
+            textDiv.innerHTML = fullResponse;
+            actionsDiv.style.display = 'block';
+            
+            actionsDiv.querySelector('.ai-insert').addEventListener('click', () => {
+                this.insertTextAtPosition(editor, cursorPos, '\n\n' + fullResponse);
+                dialog.remove();
+            });
+            
+        } catch (error) {
+            response.innerHTML = `<div class="ai-error">AI 调用失败: ${error.message}</div>`;
+        }
+    }
+    
+    async handleAIWriter(dialog, cursorPos) {
+        const response = dialog.querySelector('.ai-response');
+        const editor = document.getElementById('editor');
+        const content = editor.value;
+        
+        try {
+            response.innerHTML = '<div class="ai-loading">AI 正在续写中...</div>';
+            
+            let fullResponse = '';
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'ai-result';
+            resultDiv.innerHTML = `
+                <div class="ai-result-text"><span class="ai-typing-cursor">🧱</span></div>
+                <div class="ai-result-actions" style="display: none;">
+                    <button class="ai-apply">应用到文档</button>
+                    <button class="ai-regenerate">重新生成</button>
+                </div>
+            `;
+            response.innerHTML = '';
+            response.appendChild(resultDiv);
+            
+            const textDiv = resultDiv.querySelector('.ai-result-text');
+            const actionsDiv = resultDiv.querySelector('.ai-result-actions');
+            
+            await this.callAI({
+                role: 'writer',
+                content: content
+            }, (chunk, fullContent) => {
+                fullResponse = fullContent;
+                this.typewriterEffect(textDiv, fullContent);
+            });
+            
+            // 移除光标并显示操作按钮
+            textDiv.innerHTML = fullResponse;
+            actionsDiv.style.display = 'block';
+            
+            actionsDiv.querySelector('.ai-apply').addEventListener('click', () => {
+                this.insertTextAtPosition(editor, cursorPos, '\n\n' + fullResponse);
+                dialog.remove();
+            });
+            
+            actionsDiv.querySelector('.ai-regenerate').addEventListener('click', () => {
+                this.handleAIWriter(dialog, cursorPos);
+            });
+            
+        } catch (error) {
+            response.innerHTML = `<div class="ai-error">AI 调用失败: ${error.message}</div>`;
+        }
+    }
+    
+    async callAI(params, onChunk = null) {
+        if (!this.settings.aiApiKey) {
+            throw new Error('请先在设置中配置 API Key');
+        }
+        
+        const messages = [];
+        
+        if (params.role === 'chat') {
+            messages.push({
+                role: 'system',
+                content: '你是一个智能助手，请根据用户提供的文档内容回答问题。请用中文回答。'
+            });
+            messages.push({
+                role: 'user',
+                content: `文档内容：\n${params.content}\n\n问题：${params.question}`
+            });
+        } else if (params.role === 'writer') {
+            messages.push({
+                role: 'system',
+                content: '你是一个智能写作助手，请根据用户提供的文档内容进行续写。续写内容应该与原文风格保持一致，逻辑连贯。请用中文续写。'
+            });
+            messages.push({
+                role: 'user',
+                content: `请根据以下内容进行续写：\n${params.content}`
+            });
+        }
+        
+        const response = await fetch(`${this.settings.aiBaseUrl}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.settings.aiApiKey}`
+            },
+            body: JSON.stringify({
+                model: this.settings.aiModel,
+                messages: messages,
+                temperature: 0.7,
+                max_tokens: 2000,
+                stream: onChunk ? true : false
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API 调用失败: ${response.status} ${response.statusText}`);
+        }
+        
+        if (onChunk) {
+            // 流式处理
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullContent = '';
+            
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+                            
+                            try {
+                                const parsed = JSON.parse(data);
+                                const content = parsed.choices?.[0]?.delta?.content;
+                                if (content) {
+                                    fullContent += content;
+                                    onChunk(content, fullContent);
+                                }
+                            } catch (e) {
+                                // 忽略解析错误
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+            
+            return fullContent;
+        } else {
+            // 非流式处理
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+    }
+    
+    createDefaultTutorial() {
+        // 检查公共工作区是否已有教程
+        const publicNotes = this.notes.filter(note => note.workspace === 'public');
+        const hasTutorial = publicNotes.some(note => note.title.includes('功能教程'));
+        
+        if (!hasTutorial) {
+            const tutorialNote = {
+                id: 'tutorial-' + Date.now().toString(),
+                title: '📚 智能笔记应用功能教程',
+                content: this.getTutorialContent(),
+                workspace: 'public',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            
+            this.notes.unshift(tutorialNote);
+            this.saveNotes();
+        }
+    }
+    
+    getTutorialContent() {
+        return `# 📚 My Markdown功能教程
+
+欢迎使用My Markdown！本教程将帮助您快速掌握所有功能。
+
+## 🚀 基础功能
+
+### 📝 创建和编辑笔记
+- 点击左侧边栏的 **"新建笔记"** 按钮创建新笔记
+- 在标题栏输入笔记标题
+- 在编辑器中输入内容，支持 Markdown 语法
+- 应用会自动保存您的更改
+
+### 📁 工作区管理
+- **公共工作区**: 存放共享和教程内容
+- **私人工作区**: 存放个人私密内容
+- 点击工作区选择器切换不同工作区
+- 点击 **"+"** 按钮创建新工作区
+
+### 🎨 Markdown 格式化
+使用工具栏快速插入 Markdown 元素：
+
+#### 文本格式
+- **粗体文本**: \`**粗体**\` 或使用工具栏 **B** 按钮
+- *斜体文本*: \`*斜体*\` 或使用工具栏 *I* 按钮
+- ~~删除线~~: \`~~删除线~~\`
+- \`行内代码\`: 使用反引号包围
+
+#### 标题
+\`\`\`
+# 一级标题
+## 二级标题
+### 三级标题
+\`\`\`
+
+#### 列表
+**无序列表:**
+- 项目 1
+- 项目 2
+  - 子项目 2.1
+  - 子项目 2.2
+
+**有序列表:**
+1. 第一项
+2. 第二项
+3. 第三项
+
+**任务列表:**
+- [x] 已完成任务
+- [ ] 待完成任务
+
+#### 引用和代码
+> 这是一个引用块
+> 可以用来突出重要信息
+
+\`\`\`javascript
+// 代码块示例
+function hello() {
+    console.log("Hello, World!");
+}
+\`\`\`
+
+#### 表格
+| 功能 | 快捷键 | 说明 |
+|------|--------|------|
+| 保存 | Ctrl+S | 保存当前笔记 |
+| 新建 | Ctrl+N | 创建新笔记 |
+| 预览 | Ctrl+P | 切换预览模式 |
+
+#### 链接和图片
+- 链接: \`[链接文本](URL)\`
+- 图片: \`![图片描述](图片URL)\`
+- 使用工具栏的图片按钮可以直接插入图片
+
+## 🤖 AI 智能功能
+
+### 启用 AI 功能
+1. 点击右上角的 **设置** 按钮
+2. 在设置中启用 **"AI 功能"**
+3. 配置您的 API Key 和模型设置
+
+### AI 聊天助手
+- 在编辑器中输入 \`@chat\` 然后按 **Tab** 键
+- 在弹出的对话框中输入问题
+- AI 会基于当前文档内容回答您的问题
+- 支持流式返回和打字机效果 🧱
+
+### AI 续写助手
+- 在编辑器中输入 \`@writer\` 然后按 **Tab** 键
+- AI 会根据当前文档内容进行智能续写
+- 可以选择应用到文档或重新生成
+
+## 🎨 高级功能
+
+### 🖼️ 图片管理
+- 点击工具栏的图片按钮插入图片
+- 支持拖拽上传图片文件
+- 图片会自动转换为 base64 格式存储
+- 在编辑器中可以折叠/展开图片显示
+
+### 🎨 绘图功能
+- 点击工具栏的绘图按钮打开绘图板
+- 支持多种绘图工具：画笔、橡皮擦、形状等
+- 可以调整画笔颜色和粗细
+- 绘制完成后可以插入到笔记中
+
+### 📄 模板系统
+创建新笔记时可以选择模板：
+- **空白笔记**: 从零开始
+- **会议记录**: 包含日期、参与者、议程等结构
+- **待办清单**: 任务管理模板
+- **日记**: 日记记录模板
+- **项目计划**: 项目规划模板
+- **研究笔记**: 学术研究模板
+
+### 📤 导出功能
+支持多种导出格式：
+- **PDF**: 生成 PDF 文档
+- **HTML**: 导出为网页格式
+- **图片**: 将内容导出为图片
+- **Markdown**: 导出原始 Markdown 文件
+
+## ⚙️ 个性化设置
+
+### 主题设置
+- **浅色主题**: 适合白天使用
+- **深色主题**: 适合夜间使用，保护眼睛
+
+### 编辑器设置
+- **字体大小**: 可调节编辑器字体大小
+- **自动保存**: 开启后会自动保存更改
+- **预览模式**: 实时预览 Markdown 渲染效果
+
+### AI 设置
+- **API Key**: 配置您的 AI 服务 API 密钥
+- **Base URL**: 设置 AI 服务的基础 URL
+- **模型选择**: 选择使用的 AI 模型
+
+## 🔧 快捷键
+
+| 功能 | 快捷键 | 说明 |
+|------|--------|------|
+| 新建笔记 | Ctrl+N | 创建新笔记 |
+| 保存笔记 | Ctrl+S | 保存当前笔记 |
+| 切换预览 | Ctrl+P | 切换预览模式 |
+| 全屏模式 | F11 | 进入/退出全屏 |
+| AI 聊天 | @chat + Tab | 触发 AI 聊天 |
+| AI 续写 | @writer + Tab | 触发 AI 续写 |
+
+## 💡 使用技巧
+
+1. **快速格式化**: 使用 Markdown 工具栏快速插入格式
+2. **图片折叠**: 在编辑器中点击图片旁的按钮可以折叠长图片数据
+3. **工作区分类**: 使用不同工作区来组织不同类型的笔记
+4. **模板复用**: 创建常用的笔记模板提高效率
+5. **AI 辅助**: 利用 AI 功能来辅助写作和问答
+6. **实时预览**: 开启预览模式查看最终效果
+7. **自动保存**: 开启自动保存避免数据丢失
+
+## 🆘 常见问题
+
+### Q: 如何备份我的笔记？
+A: 可以使用导出功能将笔记导出为 Markdown 或其他格式进行备份。
+
+### Q: AI 功能需要网络连接吗？
+A: 是的，AI 功能需要连接到配置的 AI 服务提供商。
+
+### Q: 图片存储在哪里？
+A: 图片以 base64 格式直接存储在笔记内容中，无需外部存储。
+
+### Q: 可以同时编辑多个笔记吗？
+A: 当前版本一次只能编辑一个笔记，但可以快速切换。
+
+### Q: 如何删除笔记？
+A: 选择要删除的笔记，点击工具栏的删除按钮。
+
+---
+
+🎉 **恭喜！您已经掌握了智能笔记应用的所有功能。开始创建您的第一个笔记吧！**
+
+> 💡 **提示**: 您可以删除这个教程笔记，或者保留它作为参考。随时可以通过创建新笔记来开始您的笔记之旅。`;
+    }
+    
+    typewriterEffect(element, text) {
+        // 显示文本和光标
+        element.innerHTML = text + '<span class="ai-typing-cursor">🧱</span>';
+    }
+    
+    insertTextAtPosition(editor, position, text) {
+        const currentValue = editor.value;
+        const newValue = currentValue.substring(0, position) + text + currentValue.substring(position);
+        editor.value = newValue;
+        editor.focus();
+        editor.setSelectionRange(position + text.length, position + text.length);
+        this.onContentChange();
     }
 }
 
