@@ -1,10 +1,9 @@
 // App State
 class NotesApp {
     constructor() {
-        this.notes = JSON.parse(localStorage.getItem('notes')) || [];
         this.currentNote = null;
         this.currentWorkspace = localStorage.getItem('currentWorkspace') || 'public';
-        this.workspaces = JSON.parse(localStorage.getItem('workspaces')) || ['public', 'private'];
+        this.workspaces = JSON.parse(localStorage.getItem('workspaces') || '[]') || ['public', 'private'];
         const defaultSettings = {
             theme: 'light',
             fontSize: 14,
@@ -14,12 +13,28 @@ class NotesApp {
             aiBaseUrl: 'https://api.deepseek.com',
             aiModel: 'deepseek-chat',
             markdownTheme: 'github',
-            customThemeUrl: ''
+            customThemeUrl: '',
+            cloudSync: false,
+            serverUrl: 'http://localhost:3000',
+            userId: 'default'
         };
-        const savedSettings = JSON.parse(localStorage.getItem('settings')) || {};
+        const savedSettings = JSON.parse(localStorage.getItem('settings') || '{}') || {};
         this.settings = Object.assign({}, defaultSettings, savedSettings);
         this.autoSaveTimer = null;
         this.isPreviewMode = false;
+        
+        // 从localStorage恢复同步状态
+        const savedSyncStatus = JSON.parse(localStorage.getItem('syncStatus') || '{}') || {};
+        this.syncStatus = {
+            connected: false,
+            syncing: false,
+            lastSync: savedSyncStatus.lastSync || null,
+            error: savedSyncStatus.error || null
+        };
+        this.syncTimer = null;
+        
+        // 根据云端同步设置决定数据源
+        this.initDataSource();
         
         this.init();
     }
@@ -32,6 +47,7 @@ class NotesApp {
         this.applySettings();
         this.setupMarkdownRenderer();
         this.setupDrawingCanvas();
+        this.initCloudSync();
 
         
         // Setup image toggle handlers for editor
@@ -106,6 +122,13 @@ class NotesApp {
         document.getElementById('markdownThemeSelect').addEventListener('change', (e) => this.changeMarkdownTheme(e.target.value));
         document.getElementById('customThemeUrl').addEventListener('input', (e) => this.updateCustomThemeUrl(e.target.value));
         
+        // Cloud sync events
+        document.getElementById('cloudSync').addEventListener('change', (e) => this.toggleCloudSync(e.target.checked));
+        document.getElementById('serverUrl').addEventListener('input', (e) => this.updateServerUrl(e.target.value));
+        document.getElementById('userId').addEventListener('input', (e) => this.updateUserId(e.target.value));
+        document.getElementById('syncNow').addEventListener('click', () => this.syncNow());
+        document.getElementById('syncStatus').addEventListener('click', () => this.showSyncStatus());
+        
         // Mobile sidebar toggle
         document.getElementById('sidebarToggle').addEventListener('click', () => this.toggleSidebar());
         
@@ -178,11 +201,33 @@ class NotesApp {
         this.updateActiveNote(this.currentNote.id);
     }
     
-    deleteCurrentNote() {
+    async deleteCurrentNote() {
         if (!this.currentNote) return;
         
         if (confirm('确定要删除这篇笔记吗？')) {
-            this.notes = this.notes.filter(n => n.id !== this.currentNote.id);
+            const noteId = this.currentNote.id;
+            
+            // 从本地数组中移除
+            this.notes = this.notes.filter(n => n.id !== noteId);
+            
+            // 如果开启云端同步，同时从服务器删除
+            if (this.settings.cloudSync && this.syncStatus.connected) {
+                try {
+                    const response = await fetch(`${this.settings.serverUrl}/api/notes/${noteId}?userId=${this.settings.userId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('云端删除失败，但本地已删除');
+                        // 即使云端删除失败，也继续本地删除流程
+                    }
+                } catch (error) {
+                    console.error('云端删除请求失败:', error);
+                    // 即使云端删除失败，也继续本地删除流程
+                }
+            }
+            
+            // 保存更新后的笔记列表
             this.saveNotes();
             this.renderNotesList();
             
@@ -891,10 +936,53 @@ class NotesApp {
     }
     
     applySettings() {
-        document.body.className = this.settings.theme;
+        // 移除所有主题类，然后添加当前主题
+        document.body.classList.remove('light', 'dark');
+        document.body.classList.add(this.settings.theme);
         document.getElementById('editor').style.fontSize = this.settings.fontSize + 'px';
         document.getElementById('preview').style.fontSize = this.settings.fontSize + 'px';
         this.applyMarkdownTheme();
+        
+        // 应用所有设置到UI控件（添加null检查）
+        const themeSelect = document.getElementById('themeSelect');
+        if (themeSelect) themeSelect.value = this.settings.theme;
+        
+        const fontSizeSelect = document.getElementById('fontSize');
+        if (fontSizeSelect) fontSizeSelect.value = this.settings.fontSize;
+        
+        const autoSaveCheckbox = document.getElementById('autoSave');
+        if (autoSaveCheckbox) autoSaveCheckbox.checked = this.settings.autoSave;
+        
+        const aiEnabledCheckbox = document.getElementById('aiEnabled');
+        if (aiEnabledCheckbox) aiEnabledCheckbox.checked = this.settings.aiEnabled;
+        
+        const aiApiKeyInput = document.getElementById('aiApiKey');
+        if (aiApiKeyInput) aiApiKeyInput.value = this.settings.aiApiKey;
+        
+        const aiModelSelect = document.getElementById('aiModel');
+        if (aiModelSelect) aiModelSelect.value = this.settings.aiModel;
+        
+        const markdownThemeSelect = document.getElementById('markdownThemeSelect');
+        if (markdownThemeSelect) markdownThemeSelect.value = this.settings.markdownTheme;
+        
+        const customThemeUrlInput = document.getElementById('customThemeUrl');
+        if (customThemeUrlInput) customThemeUrlInput.value = this.settings.customThemeUrl;
+        
+        // 应用云端同步设置
+        const cloudSyncCheckbox = document.getElementById('cloudSync');
+        if (cloudSyncCheckbox) cloudSyncCheckbox.checked = this.settings.cloudSync;
+        
+        const serverUrlInput = document.getElementById('serverUrl');
+        if (serverUrlInput) serverUrlInput.value = this.settings.serverUrl;
+        
+        const userIdInput = document.getElementById('userId');
+        if (userIdInput) userIdInput.value = this.settings.userId;
+        
+        // 显示/隐藏自定义主题输入框
+        const customThemeGroup = document.getElementById('customThemeGroup');
+        if (customThemeGroup) {
+            customThemeGroup.style.display = this.settings.markdownTheme === 'custom' ? 'block' : 'none';
+        }
     }
     
     changeMarkdownTheme(theme) {
@@ -1815,9 +1903,27 @@ class NotesApp {
 
     }
     
+    // 初始化数据源
+    async initDataSource() {
+        if (this.settings.cloudSync) {
+            // 开启同步：优先从云端加载数据
+            this.notes = [];
+            // 云端数据将在initCloudSync中加载
+        } else {
+            // 未开启同步：从localStorage加载数据
+            this.notes = JSON.parse(localStorage.getItem('notes') || '[]') || [];
+        }
+    }
+    
     // Data Persistence
     saveNotes() {
-        localStorage.setItem('notes', JSON.stringify(this.notes));
+        if (this.settings.cloudSync && this.syncStatus.connected) {
+            // 开启同步：只保存到云端
+            this.syncToCloud();
+        } else {
+            // 未开启同步：只保存到localStorage
+            localStorage.setItem('notes', JSON.stringify(this.notes));
+        }
     }
     
     saveWorkspaces() {
@@ -1826,6 +1932,20 @@ class NotesApp {
     
     saveSettings() {
         localStorage.setItem('settings', JSON.stringify(this.settings));
+        
+        // 如果开启云端同步，同时同步设置到云端
+        if (this.settings.cloudSync && this.syncStatus.connected) {
+            this.syncSettingsToCloud();
+        }
+    }
+    
+    saveSyncStatus() {
+        // 只保存需要持久化的状态信息
+        const statusToSave = {
+            lastSync: this.syncStatus.lastSync,
+            error: this.syncStatus.error
+        };
+        localStorage.setItem('syncStatus', JSON.stringify(statusToSave));
     }
     
     // AI Functions
@@ -2330,6 +2450,343 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
         editor.focus();
         editor.setSelectionRange(position + text.length, position + text.length);
         this.onContentChange();
+    }
+    
+    // 生成随机用户ID
+    generateRandomUserId() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < 12; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    }
+    
+    // Cloud Sync Functions
+    async initCloudSync() {
+        if (!this.settings.cloudSync) {
+            return;
+        }
+        
+        this.updateSyncIndicator('connecting', '连接中...');
+        
+        try {
+            const response = await fetch(`${this.settings.serverUrl}/api/sync/status?userId=${this.settings.userId}`);
+            if (response.ok) {
+                this.syncStatus.connected = true;
+                this.syncStatus.error = null;
+                this.saveSyncStatus();
+                this.updateSyncIndicator('connected', '已连接');
+                
+                // 启动定期同步
+                this.startAutoSync();
+                
+                // 初始同步
+                await this.syncFromCloud();
+            } else {
+                throw new Error('服务器连接失败');
+            }
+        } catch (error) {
+            this.syncStatus.connected = false;
+            this.syncStatus.error = error.message;
+            this.saveSyncStatus();
+            this.updateSyncIndicator('error', '连接失败');
+            console.error('云端同步初始化失败:', error);
+        }
+    }
+    
+    updateSyncIndicator(status, text) {
+        const indicator = document.getElementById('syncIndicator');
+        const icon = document.getElementById('syncIcon');
+        const textElement = document.getElementById('syncText');
+        
+        if (!this.settings.cloudSync) {
+            indicator.style.display = 'none';
+            return;
+        }
+        
+        indicator.style.display = 'flex';
+        indicator.className = `sync-indicator ${status}`;
+        textElement.textContent = text;
+        
+        switch (status) {
+            case 'connected':
+                icon.className = 'fas fa-cloud';
+                break;
+            case 'syncing':
+                icon.className = 'fas fa-sync-alt';
+                break;
+            case 'error':
+                icon.className = 'fas fa-exclamation-triangle';
+                break;
+            default:
+                icon.className = 'fas fa-cloud-slash';
+        }
+    }
+    
+    async syncToCloud() {
+        if (!this.settings.cloudSync || !this.syncStatus.connected || this.syncStatus.syncing) {
+            return;
+        }
+        
+        this.syncStatus.syncing = true;
+        this.updateSyncIndicator('syncing', '同步中...');
+        
+        try {
+            const response = await fetch(`${this.settings.serverUrl}/api/sync/notes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    notes: this.notes,
+                    userId: this.settings.userId
+                })
+            });
+            
+            if (response.ok) {
+                this.syncStatus.lastSync = new Date();
+                this.saveSyncStatus();
+                this.updateSyncIndicator('connected', '同步完成');
+                
+                // 2秒后恢复到已连接状态
+                setTimeout(() => {
+                    if (this.syncStatus.connected) {
+                        this.updateSyncIndicator('connected', '已连接');
+                    }
+                }, 2000);
+            } else {
+                throw new Error('同步失败');
+            }
+        } catch (error) {
+            this.syncStatus.error = error.message;
+            this.saveSyncStatus();
+            this.updateSyncIndicator('error', '同步失败');
+            console.error('云端同步失败:', error);
+        } finally {
+            this.syncStatus.syncing = false;
+        }
+    }
+    
+    async syncFromCloud() {
+        if (!this.settings.cloudSync || !this.syncStatus.connected) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.settings.serverUrl}/api/notes?userId=${this.settings.userId}`);
+            if (response.ok) {
+                const cloudNotes = await response.json();
+                
+                // 开启同步时，直接使用云端数据，不合并
+                this.notes = cloudNotes;
+                
+                // 刷新笔记列表
+                this.renderNotesList();
+                
+                // 如果有笔记，加载第一个
+                if (this.notes.length > 0) {
+                    this.loadNote(this.notes[0].id);
+                }
+                
+                // 同步设置
+                await this.syncSettingsFromCloud();
+            }
+        } catch (error) {
+            console.error('从云端同步失败:', error);
+        }
+    }
+    
+    mergeNotes(localNotes, cloudNotes) {
+        const merged = new Map();
+        
+        // 添加本地笔记
+        localNotes.forEach(note => {
+            merged.set(note.id, note);
+        });
+        
+        // 合并云端笔记（云端优先）
+        cloudNotes.forEach(cloudNote => {
+            const localNote = merged.get(cloudNote.id);
+            if (!localNote || new Date(cloudNote.updatedAt) > new Date(localNote.updatedAt)) {
+                merged.set(cloudNote.id, {
+                    id: cloudNote.id,
+                    title: cloudNote.title,
+                    content: cloudNote.content,
+                    workspace: cloudNote.workspace,
+                    createdAt: cloudNote.createdAt,
+                    updatedAt: cloudNote.updatedAt
+                });
+            }
+        });
+        
+        return Array.from(merged.values()).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    }
+    
+    async syncSettingsFromCloud() {
+        try {
+            const response = await fetch(`${this.settings.serverUrl}/api/settings?userId=${this.settings.userId}`);
+            if (response.ok) {
+                const data = await response.json();
+                
+                // 完全同步所有设置（包括主题、Markdown样式、AI功能等）
+                this.settings = Object.assign({}, this.settings, data.settings);
+                
+                // 更新工作区
+                if (data.workspaces) {
+                    this.workspaces = data.workspaces;
+                    localStorage.setItem('workspaces', JSON.stringify(this.workspaces));
+                    this.loadWorkspace();
+                }
+                
+                // 保存设置
+                localStorage.setItem('settings', JSON.stringify(this.settings));
+                this.applySettings();
+            }
+        } catch (error) {
+            console.error('同步设置失败:', error);
+        }
+    }
+    
+    async syncSettingsToCloud() {
+        if (!this.settings.cloudSync || !this.syncStatus.connected) {
+            return;
+        }
+        
+        try {
+            await fetch(`${this.settings.serverUrl}/api/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: this.settings.userId,
+                    settings: this.settings,
+                    workspaces: this.workspaces
+                })
+            });
+        } catch (error) {
+            console.error('同步设置到云端失败:', error);
+        }
+    }
+    
+    startAutoSync() {
+        if (this.syncTimer) {
+            clearInterval(this.syncTimer);
+        }
+        
+        // 每5分钟自动同步一次
+        this.syncTimer = setInterval(() => {
+            if (this.settings.cloudSync && this.syncStatus.connected) {
+                this.syncFromCloud();
+            }
+        }, 5 * 60 * 1000);
+    }
+    
+    stopAutoSync() {
+        if (this.syncTimer) {
+            clearInterval(this.syncTimer);
+            this.syncTimer = null;
+        }
+    }
+    
+    // Cloud Sync Event Handlers
+    async toggleCloudSync(enabled) {
+        this.settings.cloudSync = enabled;
+        
+        if (enabled) {
+            // 如果用户ID为默认值或为空，自动生成新的用户ID
+            if (!this.settings.userId || this.settings.userId === 'default' || this.settings.userId.trim() === '') {
+                this.settings.userId = this.generateRandomUserId();
+                // 更新UI中的用户ID输入框
+                const userIdInput = document.getElementById('userId');
+                if (userIdInput) {
+                    userIdInput.value = this.settings.userId;
+                }
+            }
+            
+            // 切换到云端数据源
+            this.notes = [];
+            this.currentNote = null;
+            this.renderNotesList();
+            document.getElementById('editor').value = '';
+            document.getElementById('preview').innerHTML = '';
+            
+            this.initCloudSync();
+        } else {
+            this.stopAutoSync();
+            this.syncStatus.connected = false;
+            this.updateSyncIndicator('disconnected', '未连接');
+            
+            // 切换到本地数据源
+            this.notes = JSON.parse(localStorage.getItem('notes') || '[]') || [];
+            this.currentNote = null;
+            this.renderNotesList();
+            if (this.notes.length > 0) {
+                this.loadNote(this.notes[0].id);
+            } else {
+                document.getElementById('editor').value = '';
+                document.getElementById('preview').innerHTML = '';
+            }
+        }
+        
+        this.saveSettings();
+    }
+    
+    updateServerUrl(url) {
+        this.settings.serverUrl = url;
+        this.saveSettings();
+        
+        if (this.settings.cloudSync) {
+            // 重新初始化连接
+            this.syncStatus.connected = false;
+            this.initCloudSync();
+        }
+    }
+    
+    updateUserId(userId) {
+        this.settings.userId = userId;
+        this.saveSettings();
+        
+        if (this.settings.cloudSync) {
+            // 重新初始化连接
+            this.syncStatus.connected = false;
+            this.initCloudSync();
+        }
+    }
+    
+    async syncNow() {
+        if (!this.settings.cloudSync) {
+            alert('请先启用云端同步功能');
+            return;
+        }
+        
+        if (!this.syncStatus.connected) {
+            await this.initCloudSync();
+        }
+        
+        if (this.syncStatus.connected) {
+            await this.syncFromCloud();
+            await this.syncToCloud();
+        }
+    }
+    
+    showSyncStatus() {
+        const status = this.syncStatus;
+        let message = `同步状态:\n`;
+        message += `连接状态: ${status.connected ? '已连接' : '未连接'}\n`;
+        message += `服务器地址: ${this.settings.serverUrl}\n`;
+        message += `用户ID: ${this.settings.userId}\n`;
+        
+        if (status.lastSync) {
+            message += `最后同步: ${new Date(status.lastSync).toLocaleString()}\n`;
+        }
+        
+        if (status.error) {
+            message += `错误信息: ${status.error}\n`;
+        }
+        
+        alert(message);
     }
 }
 
