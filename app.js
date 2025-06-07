@@ -2022,7 +2022,7 @@ class NotesApp {
         if (!hasTutorial) {
             const tutorialNote = {
                 id: 'tutorial-' + Date.now().toString(),
-                title: '📚 智能笔记应用功能教程',
+                title: '📚 My Markdown功能教程',
                 content: this.getTutorialContent(),
                 workspace: 'public',
                 createdAt: new Date().toISOString(),
