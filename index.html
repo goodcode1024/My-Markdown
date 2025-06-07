@@ -47,6 +47,10 @@
                 <button id="settings" class="btn-secondary">
                     <i class="fas fa-cog"></i> 设置
                 </button>
+                <div class="sync-indicator" id="syncIndicator" style="display: none;">
+                    <i class="fas fa-cloud" id="syncIcon"></i>
+                    <span id="syncText">未连接</span>
+                </div>
             </div>
             
             <div class="notes-list" id="notesList">
@@ -240,6 +244,27 @@
                 <div class="setting-group">
                     <label for="aiModel">模型名称</label>
                     <input type="text" id="aiModel" placeholder="deepseek-chat">
+                </div>
+                
+                <div class="setting-group">
+                    <h3>云端同步</h3>
+                </div>
+                <div class="setting-group">
+                    <label for="cloudSync">启用云端同步</label>
+                    <input type="checkbox" id="cloudSync">
+                </div>
+                <div class="setting-group">
+                    <label for="serverUrl">服务器地址</label>
+                    <input type="text" id="serverUrl" placeholder="http://localhost:3000">
+                </div>
+                <div class="setting-group">
+                    <label for="userId">用户ID</label>
+                    <input type="text" id="userId" placeholder="default">
+                    <small style="color: #6b7280; font-size: 12px; margin-top: 4px; display: block;">用于区分不同用户的数据</small>
+                </div>
+                <div class="setting-group">
+                    <button id="syncNow" class="btn btn-primary">立即同步</button>
+                    <button id="syncStatus" class="btn btn-secondary">同步状态</button>
                 </div>
             </div>
         </div>
