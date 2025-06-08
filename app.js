@@ -214,7 +214,13 @@ class NotesApp {
             if (this.settings.cloudSync && this.syncStatus.connected) {
                 try {
                     const response = await fetch(`${this.settings.serverUrl}/api/notes/${noteId}?userId=${this.settings.userId}`, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        mode: 'cors',
+                        credentials: 'omit',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
                     });
                     
                     if (!response.ok) {
@@ -2471,7 +2477,15 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
         this.updateSyncIndicator('connecting', '连接中...');
         
         try {
-            const response = await fetch(`${this.settings.serverUrl}/api/sync/status?userId=${this.settings.userId}`);
+            const response = await fetch(`${this.settings.serverUrl}/api/sync/status?userId=${this.settings.userId}`, {
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 this.syncStatus.connected = true;
                 this.syncStatus.error = null;
@@ -2535,7 +2549,10 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
         try {
             const response = await fetch(`${this.settings.serverUrl}/api/sync/notes`, {
                 method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
                 headers: {
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -2574,7 +2591,15 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
         }
         
         try {
-            const response = await fetch(`${this.settings.serverUrl}/api/notes?userId=${this.settings.userId}`);
+            const response = await fetch(`${this.settings.serverUrl}/api/notes?userId=${this.settings.userId}`, {
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const cloudNotes = await response.json();
                 
@@ -2625,7 +2650,15 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
     
     async syncSettingsFromCloud() {
         try {
-            const response = await fetch(`${this.settings.serverUrl}/api/settings?userId=${this.settings.userId}`);
+            const response = await fetch(`${this.settings.serverUrl}/api/settings?userId=${this.settings.userId}`, {
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
                 
@@ -2656,7 +2689,10 @@ A: 选择要删除的笔记，点击工具栏的删除按钮。
         try {
             await fetch(`${this.settings.serverUrl}/api/settings`, {
                 method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
                 headers: {
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
